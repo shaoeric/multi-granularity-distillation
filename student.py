@@ -23,6 +23,8 @@ from models import model_dict
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(description='train SSKD student network.')
+parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
+
 parser.add_argument('--epoch', type=int, default=240)
 parser.add_argument('--t-epoch', type=int, default=60)
 parser.add_argument('--batch-size', type=int, default=64)
@@ -37,6 +39,7 @@ parser.add_argument('--t-milestones', type=int, nargs='+', default=[30,45])
 
 parser.add_argument('--s-arch', type=str) # student architecture
 parser.add_argument('--t-path', type=str) # teacher checkpoint path
+parser.add_argument('--T', type=float, default=2.0) # temperature
 
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--gpu-id', type=int, default=0)
@@ -49,7 +52,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
 t_name = osp.abspath(args.t_path).split('/')[-1]
 t_arch = '_'.join(t_name.split('_')[1:-1])
-exp_name = f'mpd_student_{args.arch}_time{datetime.now()}'
+exp_name = f'mpd_student_{args.s_arch}_time{datetime.now()}'
 exp_path = './experiments/{}'.format(exp_name)
 os.makedirs(exp_path, exist_ok=True)
 
@@ -80,17 +83,14 @@ t_model = wrapper(module=t_model, cfg=args).cuda()
 
 # first train the teacher's multi-pressure tube
 t_model.eval()
-t_high_pressure_optimizer = optim.SGD([{'params': t_model.backbone.parameters(), 'lr': 0.0},
-                                       {'params': t_model.high_pressure_encoder.parameters(), 'lr': args.t_lr},
-                                       {'params': t_model.high_pressure_decoder.parameters(), 'lr': args.t_lr}
-                                       ], momentum=args.momentum, weight_decay=args.weight_decay)
-t_high_scheduler = MultiStepLR(t_high_pressure_optimizer, milestones=args.t_milestones, gamma=args.gamma)
+t_pressure_optimizer = optim.SGD([{'params': t_model.backbone.parameters(), 'lr': 0.0},
+                                  {'params': t_model.high_pressure_encoder.parameters(), 'lr': args.t_lr},
+                                  {'params': t_model.high_pressure_decoder.parameters(), 'lr': args.t_lr},
+                                  {'params': t_model.low_pressure_encoder.parameters(), 'lr': args.t_lr},
+                                  {'params': t_model.low_pressure_decoder.parameters(), 'lr': args.t_lr}
+                                  ], momentum=args.momentum, weight_decay=args.weight_decay)
+t_pressure_scheduler = MultiStepLR(t_pressure_optimizer, milestones=args.t_milestones, gamma=args.gamma)
 
-t_low_pressure_optimizer = optim.SGD([{'params': t_model.backbone.parameters(), 'lr': 0.0},
-                                      {'params': t_model.low_pressure_encoder.parameters(), 'lr': args.t_lr},
-                                      {'params': t_model.low_pressure_decoder.parameters(), 'lr': args.t_lr}
-                                      ], momentum=args.momentum, weight_decay=args.weight_decay)
-t_low_scheduler = MultiStepLR(t_low_pressure_optimizer, milestones=args.t_milestones, gamma=args.gamma)
 
 
 for epoch in range(args.t_epoch):
@@ -105,24 +105,23 @@ for epoch in range(args.t_epoch):
         img = img.cuda()
         label = label.cuda()
 
-        t_high_pressure_optimizer.zero_grad()
-        t_low_pressure_optimizer.zero_grad()
+        t_pressure_optimizer.zero_grad()
 
         out, high_pressure_decoder_out, low_pressure_decoder_out, _ = t_model.forward(img, bb_grad=False, decoder_train=True)
         out = out.detach()
 
-        loss_high_pressure = F.kl_div(F.log_softmax(high_pressure_decoder_out, dim=-1), F.softmax(out, dim=-1), reduction='batchmean')
-        loss_high_pressure.backward()
-        t_high_pressure_optimizer.step()
+        decoder_out = (high_pressure_decoder_out + low_pressure_decoder_out) / 2
 
-        loss_low_pressure = F.kl_div(F.log_softmax(low_pressure_decoder_out, dim=-1), F.softmax(out, dim=-1), reduction='batchmean')
-        loss_low_pressure.backward()
-        t_low_pressure_optimizer.step()
+        loss = F.kl_div(F.log_softmax(decoder_out, dim=-1), F.softmax(out, dim=-1), reduction='batchmean')
+        loss.backward()
+        t_pressure_optimizer.step()
 
+        loss_high_pressure = F.kl_div(F.log_softmax(high_pressure_decoder_out.data, dim=-1), F.softmax(out, dim=-1), reduction='batchmean')
         h_acc = accuracy(high_pressure_decoder_out.data, label)[0]
         h_acc_record.update(h_acc.item(), img.size(0))
         h_loss_record.update(loss_high_pressure.item(), img.size(0))
 
+        loss_low_pressure = F.kl_div(F.log_softmax(low_pressure_decoder_out.data, dim=-1), F.softmax(out, dim=-1), reduction='batchmean')
         l_acc = accuracy(low_pressure_decoder_out.data, label)[0]
         l_acc_record.update(l_acc.item(), img.size(0))
         l_loss_record.update(loss_low_pressure.item(), img.size(0))
@@ -176,8 +175,7 @@ for epoch in range(args.t_epoch):
     )
     print(msg)
 
-    t_high_scheduler.step()
-    t_low_scheduler.step()
+    t_pressure_scheduler.step()
 
 name = osp.join(exp_path, 'ckpt/teacher_wrapper.pth')
 os.makedirs(osp.dirname(name), exist_ok=True)
@@ -185,4 +183,124 @@ torch.save(t_model.state_dict(), name)
 
 # ----------------  start distillation ! -------------------
 
+s_model = model_dict[args.s_arch](num_classes=100)
+s_model = wrapper(module=s_model, cfg=args).cuda()
+s_optimizer = optim.SGD(s_model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+s_scheduler = MultiStepLR(s_optimizer, milestones=args.milestones, gamma=args.gamma)
 
+best_acc = -1
+for epoch in range(args.epoch):
+    s_model.train()
+    s_high_pressure_loss = AverageMeter()
+    s_low__pressure_loss = AverageMeter()
+    s_logits_loss = AverageMeter()
+    s_acc = AverageMeter()
+
+    start = time.time()
+    for img, target in train_loader:
+        img = img.cuda()
+        target = target.cuda()
+
+        s_optimizer.zero_grad()
+        with torch.no_grad():
+            t_out, t_high_pressure_encoder_out, t_low_pressure_encoder_out, _ = t_model.forward(img, bb_grad=False, decoder_train=False)
+
+        s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, _ = s_model.forward(img, bb_grad=True, decoder_train=False)
+
+        logits_loss = F.kl_div(
+            F.log_softmax(s_out / args.T, dim=1),
+            F.softmax(t_out / args.T, dim=1),
+            reduction='batchmean'
+        ) * args.T * args.T + F.cross_entropy(s_out, target)
+
+        high_loss = F.kl_div(
+            F.log_softmax(s_high_pressure_encoder_out / args.T, dim=1),
+            F.softmax(t_high_pressure_encoder_out / args.T, dim=1),
+            reduction='batchmean'
+        ) * args.T * args.T
+
+        low_loss = F.kl_div(
+            F.log_softmax(s_low_pressure_encoder_out / args.T, dim=1),
+            F.softmax(t_low_pressure_encoder_out / args.T, dim=1),
+            reduction='batchmean'
+        ) * args.T * args.T
+
+        loss = logits_loss + high_loss + low_loss
+        loss.backward()
+        s_optimizer.step()
+
+        s_high_pressure_loss.update(high_loss.item(), img.size(0))
+        s_low__pressure_loss.update(low_loss.item(), img.size(0))
+        acc = accuracy(s_out.data, target)[0]
+        s_acc.update(acc.item(), img.size(0))
+
+    logger.add_scalar('train/s_high_loss', s_high_pressure_loss.avg, epoch+1)
+    logger.add_scalar('train/s_low_loss', s_low__pressure_loss.avg, epoch+1)
+    logger.add_scalar('train/s_logits_loss', s_logits_loss.avg, epoch+1)
+    logger.add_scalar('train/s_acc', s_acc.avg, epoch+1)
+
+    run_time = time.time() - start
+    msg = 'student train Epoch:{:03d}/{:03d}\truntime:{:.3f}\t hp loss:{:.3f} lp loss:{:.3f} acc:{:.2f} '.format(
+        epoch + 1, args.epoch, run_time, s_high_pressure_loss.avg, s_low__pressure_loss.avg, s_acc.avg
+    )
+    print(msg)
+
+
+    # validation
+    s_model.eval()
+    s_high_pressure_loss = AverageMeter()
+    s_low__pressure_loss = AverageMeter()
+    s_logits_loss = AverageMeter()
+    s_acc = AverageMeter()
+
+    start = time.time()
+    for img, target in val_loader:
+        img = img.cuda()
+        target = target.cuda()
+
+        with torch.no_grad():
+            t_out, t_high_pressure_encoder_out, t_low_pressure_encoder_out, _ = t_model.forward(img, bb_grad=False, decoder_train=False)
+            s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, _ = s_model.forward(img, bb_grad=False, decoder_train=False)
+
+        logits_loss = F.kl_div(
+            F.log_softmax(s_out / args.T, dim=1),
+            F.softmax(t_out / args.T, dim=1),
+            reduction='batchmean'
+        ) * args.T * args.T + F.cross_entropy(s_out, target)
+
+        high_loss = F.kl_div(
+            F.log_softmax(s_high_pressure_encoder_out / args.T, dim=1),
+            F.softmax(t_high_pressure_encoder_out / args.T, dim=1),
+            reduction='batchmean'
+        ) * args.T * args.T
+
+        low_loss = F.kl_div(
+            F.log_softmax(s_low_pressure_encoder_out / args.T, dim=1),
+            F.softmax(t_low_pressure_encoder_out / args.T, dim=1),
+            reduction='batchmean'
+        ) * args.T * args.T
+
+        s_high_pressure_loss.update(high_loss.item(), img.size(0))
+        s_low__pressure_loss.update(low_loss.item(), img.size(0))
+        acc = accuracy(s_out.data, target)[0]
+        s_acc.update(acc.item(), img.size(0))
+
+    logger.add_scalar('val/s_high_loss', s_high_pressure_loss.avg, epoch+1)
+    logger.add_scalar('val/s_low_loss', s_low__pressure_loss.avg, epoch+1)
+    logger.add_scalar('val/s_logits_loss', s_logits_loss.avg, epoch+1)
+    logger.add_scalar('val/s_acc', s_acc.avg, epoch+1)
+
+    run_time = time.time() - start
+    msg = 'student val Epoch:{:03d}/{:03d}\truntime:{:.3f}\t hp loss:{:.3f} lp loss:{:.3f} acc:{:.2f} '.format(
+        epoch + 1, args.epoch, run_time, s_high_pressure_loss.avg, s_low__pressure_loss.avg, s_acc.avg
+    )
+    print(msg)
+
+    if s_acc.avg > best_acc:
+        state_dict = dict(epoch=epoch+1, state_dict=s_model.state_dict(), acc=s_acc.avg)
+        name = osp.join(exp_path, 'ckpt/student_best.pth')
+        os.makedirs(osp.dirname(name), exist_ok=True)
+        torch.save(state_dict, name)
+        best_acc = s_acc.avg
+
+    s_scheduler.step()
