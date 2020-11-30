@@ -2,6 +2,7 @@ import os
 import os.path as osp
 import argparse
 import time
+from datetime import datetime
 import numpy as np
 
 import torch
@@ -45,7 +46,7 @@ np.random.seed(args.seed)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
 exp_name = 'teacher_{}_seed{}'.format(args.arch, args.seed)
-exp_path = './experiments/{}'.format(exp_name)
+exp_path = './experiments/{}/{}'.format(exp_name, datetime.now().strftime('%Y-%m-%d-%H-%M'))
 os.makedirs(exp_path, exist_ok=True)
 logger = SummaryWriter(osp.join(exp_path, 'events'))
 

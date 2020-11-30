@@ -22,6 +22,8 @@ from models import model_dict
 
 torch.backends.cudnn.benchmark = True
 
+# python student.py --s-arch resnet20 --t-path ./experiments/teacher_resnet56_seed0/
+
 parser = argparse.ArgumentParser(description='train SSKD student network.')
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
 
@@ -38,6 +40,7 @@ parser.add_argument('--milestones', type=int, nargs='+', default=[60,120,180])
 parser.add_argument('--t-milestones', type=int, nargs='+', default=[30,45])
 
 parser.add_argument('--s-arch', type=str) # student architecture
+parser.add_argument('--t-arch', type=str) # student architecture
 parser.add_argument('--t-path', type=str) # teacher checkpoint path
 parser.add_argument('--T', type=float, default=2.0) # temperature
 
@@ -50,10 +53,10 @@ torch.cuda.manual_seed(args.seed)
 np.random.seed(args.seed)
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
-t_name = osp.abspath(args.t_path).split('/')[-1]
-t_arch = '_'.join(t_name.split('_')[1:-1])
-exp_name = f'mpd_T_{t_name}_S_{args.s_arch}'
-exp_path = './experiments/{}'.format(exp_name)
+
+t_arch = args.t_arch
+exp_name = f'mpd_T_{t_arch}_S_{args.s_arch}'
+exp_path = './experiments/{}/{}'.format(exp_name, datetime.now().strftime('%Y-%m-%d-%H-%M'))
 os.makedirs(exp_path, exist_ok=True)
 
 logger = SummaryWriter(osp.join(exp_path, 'events'))
@@ -266,6 +269,7 @@ for epoch in range(args.epoch):
 
         s_high_pressure_loss.update(high_loss.item(), img.size(0))
         s_low__pressure_loss.update(low_loss.item(), img.size(0))
+        s_logits_loss.update(logits_loss.item(), img.size(0))
         acc = accuracy(s_out.data, target)[0]
         s_acc.update(acc.item(), img.size(0))
 
