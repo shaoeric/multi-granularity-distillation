@@ -246,22 +246,22 @@ for epoch in range(args.epoch):
         s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, _ = s_model.forward(img, bb_grad=True, decoder_train=False)
 
         logits_loss = F.kl_div(
-            F.log_softmax(s_out / args.T, dim=1),
-            F.softmax(t_out / args.T, dim=1),
+            F.log_softmax(s_out / 4.0, dim=1),
+            F.softmax(t_out / 4.0, dim=1),
             reduction='batchmean'
-        ) * args.T * args.T + F.cross_entropy(s_out, target)
+        ) * 4.0 * 4.0 + F.cross_entropy(s_out, target)
 
         high_loss = F.kl_div(
-            F.log_softmax(s_high_pressure_encoder_out / args.T, dim=1),
-            F.softmax(t_high_pressure_encoder_out / args.T, dim=1),
+            F.log_softmax(s_high_pressure_encoder_out / 2.0, dim=1),
+            F.softmax(t_high_pressure_encoder_out / 2.0, dim=1),
             reduction='batchmean'
-        ) * args.T * args.T
+        ) * 2.0 * 2.0
 
         low_loss = F.kl_div(
-            F.log_softmax(s_low_pressure_encoder_out / args.T, dim=1),
-            F.softmax(t_low_pressure_encoder_out / args.T, dim=1),
+            F.log_softmax(s_low_pressure_encoder_out / 8.0, dim=1),
+            F.softmax(t_low_pressure_encoder_out / 8.0, dim=1),
             reduction='batchmean'
-        ) * args.T * args.T
+        ) * 8.0 * 8.0
 
         loss = logits_loss + high_loss + low_loss
         loss.backward()
@@ -302,22 +302,22 @@ for epoch in range(args.epoch):
             s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, _ = s_model.forward(img, bb_grad=False, decoder_train=False)
 
         logits_loss = F.kl_div(
-            F.log_softmax(s_out / args.T, dim=1),
-            F.softmax(t_out / args.T, dim=1),
+            F.log_softmax(s_out / 4.0, dim=1),
+            F.softmax(t_out / 4.0, dim=1),
             reduction='batchmean'
-        ) * args.T * args.T + F.cross_entropy(s_out, target)
+        ) * 4.0 * 4.0 + F.cross_entropy(s_out, target)
 
         high_loss = F.kl_div(
-            F.log_softmax(s_high_pressure_encoder_out / args.T, dim=1),
-            F.softmax(t_high_pressure_encoder_out / args.T, dim=1),
+            F.log_softmax(s_high_pressure_encoder_out / 2.0, dim=1),
+            F.softmax(t_high_pressure_encoder_out / 2.0, dim=1),
             reduction='batchmean'
-        ) * args.T * args.T
+        ) * 2.0 * 2.0
 
         low_loss = F.kl_div(
-            F.log_softmax(s_low_pressure_encoder_out / args.T, dim=1),
-            F.softmax(t_low_pressure_encoder_out / args.T, dim=1),
+            F.log_softmax(s_low_pressure_encoder_out / 8.0, dim=1),
+            F.softmax(t_low_pressure_encoder_out / 8.0, dim=1),
             reduction='batchmean'
-        ) * args.T * args.T
+        ) * 8.0 * 8.0
 
         s_high_pressure_loss.update(high_loss.item(), img.size(0))
         s_low__pressure_loss.update(low_loss.item(), img.size(0))
