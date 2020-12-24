@@ -13,7 +13,10 @@ class wrapper(nn.Module):
         try:
             num_classes = self.backbone.fc.out_features
         except:
-            num_classes = self.backbone.classifier.out_features
+            try:
+                num_classes = self.backbone.classifier.out_features
+            except:
+                num_classes = self.backbone.linear.out_features
 
         high_pressure_nodes = cfg.encoder[0]  # 64
         low_pressure_nodes = cfg.encoder[1]   # 256
@@ -43,7 +46,7 @@ class wrapper(nn.Module):
             nn.Linear(feat_dim, num_classes)
         )
 
-    def forward(self, x, bb_grad=True, decoder_train=False):
+    def forward(self, x, bb_grad=True, output_decoder=False, output_encoder=False):
         feats, out = self.backbone(x, is_feat=True)
         feat = feats[-1].view(feats[-1].size(0), -1)
 
@@ -53,9 +56,12 @@ class wrapper(nn.Module):
         if not bb_grad:
             feat = feat.detach()
 
-        if decoder_train:
+        if output_decoder:
             high_pressure_decoder_out = self.high_pressure_decoder(high_pressure_encoder_out)
             low_pressure_decoder_out = self.low_pressure_decoder(low_pressure_encoder_out)
-            return out, high_pressure_decoder_out, low_pressure_decoder_out, feat
+            if not output_encoder:
+                return out, high_pressure_decoder_out, low_pressure_decoder_out, feat
+            else:
+                return out, high_pressure_encoder_out, high_pressure_decoder_out, low_pressure_encoder_out,  low_pressure_decoder_out, feat
 
         return out, high_pressure_encoder_out, low_pressure_encoder_out, feat
