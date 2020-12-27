@@ -9,11 +9,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiStepLR
-from data.cifar100 import get_cifar100_dataloaders_sample
+from data.cifar100 import get_cifar100_dataloaders
 from torchvision.datasets import CIFAR100
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
-from crd.criterion import CRDLoss
+from distiller_zoo import RKDLoss
 from itertools import chain
 from tensorboardX import SummaryWriter
 
@@ -25,7 +25,6 @@ from models import model_dict
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
-# python student.py --s-arch resnet20 --t-path ./experiments/teacher_resnet56_seed0/
 def str2bool(v):
     if isinstance(v, bool):
         return v
@@ -40,13 +39,6 @@ def str2bool(v):
 parser = argparse.ArgumentParser(description='train SSKD student network.')
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
 parser.add_argument('--alpha', type=float, default=0.2)
-
-# NCE
-parser.add_argument('--nce_k', type=int, default=16384, help='number of negative samples for NCE')
-parser.add_argument('--nce_t', type=float, default=0.07, help='temperature parameter for softmax')
-parser.add_argument('--nce_m', default=0.5, type=float, help='momentum for non-parametric updates')
-parser.add_argument('--feat_dim', default=128, type=int, help='feature dimension')
-parser.add_argument('--mode', default='exact', type=str, choices=['exact', 'relax'])
 
 parser.add_argument('--epoch', type=int, default=240)
 parser.add_argument('--t-epoch', type=int, default=60)
@@ -80,17 +72,13 @@ if args.s_arch in ['MobileNetV2', 'ShuffleV1', 'ShuffleV2']:
     args.lr = 0.01
 
 t_arch = args.t_arch
-exp_name = f'crd_mpd_T_{t_arch}_S_{args.s_arch}'
+exp_name = f'rkd_mpd_T_{t_arch}_S_{args.s_arch}'
 exp_path = './experiments/{}/{}'.format(exp_name, datetime.now().strftime('%Y-%m-%d-%H-%M'))
 os.makedirs(exp_path, exist_ok=True)
 
 logger = SummaryWriter(osp.join(exp_path, 'events'), flush_secs=10)
 
-train_loader, val_loader, n_data = get_cifar100_dataloaders_sample('./data',
-                                                                   batch_size=args.batch_size,
-                                                                   num_workers=4,
-                                                                   k=args.nce_k,
-                                                                   mode=args.mode)
+train_loader, val_loader, n_data = get_cifar100_dataloaders(root='./data', batch_size=args.batch_size, num_workers=4, is_instance=True)
 
 # teacher model loads checkpoint
 ckpt_path = osp.join(args.t_path, 'ckpt/best.pth')
@@ -101,6 +89,16 @@ try:
 except:
     state_dict = torch.load(ckpt_path)['state_dict']
     t_model.load_state_dict(state_dict)
+
+
+if args.t_wrapper_train:
+    high_pressure_state_dict = osp.join(exp_path, 'ckpt/teacher_high_best.pth')
+    low_pressure_state_dict = osp.join(exp_path, 'ckpt/teacher_low_best.pth')
+else:
+    # if not train teacher's wrapper, we need to copy the wrapper file to ./experiment/wrapper/{t_arch}/teacher_{high/low}_best.pth
+    high_pressure_state_dict = osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_high_best.pth")
+    low_pressure_state_dict = osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_low_best.pth")
+
 
 t_model = wrapper(module=t_model, cfg=args).cuda()
 
@@ -120,14 +118,12 @@ t_low_pressure_optimizer = optim.SGD(
 t_low_scheduler = MultiStepLR(t_low_pressure_optimizer, milestones=args.t_milestones,
                               gamma=args.gamma)
 
-high_pressure_state_dict = osp.join(exp_path, 'ckpt/teacher_high_best.pth')
-low_pressure_state_dict = osp.join(exp_path, 'ckpt/teacher_low_best.pth')
-
 # student model definition
 s_model = model_dict[args.s_arch](num_classes=100)
 s_model = wrapper(module=s_model, cfg=args).cuda()
 
-print(f"Teacher:{args.t_arch} => Student:{args.s_arch} [{exp_path}]")
+
+print(f"RKD Teacher:{args.t_arch} => Student:{args.s_arch} [{exp_path}]")
 
 
 def teacher_eval(t_model, val_loader):
@@ -325,56 +321,26 @@ if args.t_wrapper_train:
 
     print(f"Teacher high:{best_high_acc} low:{best_low_acc}")
 
-# if train teacher's wrapper
-try:
-    backbone_weights = torch.load(ckpt_path)['model']
-    high_encoder_weights = torch.load(high_pressure_state_dict)['encoder_state_dict']
-    low_encoder_weights = torch.load(low_pressure_state_dict)['encoder_state_dict']
-    high_decoder_weights = torch.load(high_pressure_state_dict)['decoder_state_dict']
-    low_decoder_weights = torch.load(low_pressure_state_dict)['decoder_state_dict']
 
-    t_model.backbone.load_state_dict(backbone_weights)
-    t_model.high_pressure_encoder.load_state_dict(high_encoder_weights)
-    t_model.low_pressure_encoder.load_state_dict(low_encoder_weights)
-    t_model.high_pressure_decoder.load_state_dict(high_decoder_weights)
-    t_model.low_pressure_decoder.load_state_dict(low_decoder_weights)
+backbone_weights = torch.load(ckpt_path)['model']
+high_encoder_weights = torch.load(high_pressure_state_dict)['encoder_state_dict']
+low_encoder_weights = torch.load(low_pressure_state_dict)['encoder_state_dict']
+high_decoder_weights = torch.load(high_pressure_state_dict)['decoder_state_dict']
+low_decoder_weights = torch.load(low_pressure_state_dict)['decoder_state_dict']
 
-# if not train teacher's wrapper, we need to copy the wrapper file to ./experiment/wrapper/{t_arch}/teacher_{high/low}_best.pth_
-except:
-    backbone_weights = torch.load(ckpt_path)['model']
-    high_encoder_weights = \
-    torch.load(osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_high_best.pth"))[
-        'encoder_state_dict']
-    low_encoder_weights = \
-    torch.load(osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_low_best.pth"))[
-        'encoder_state_dict']
-    high_decoder_weights = \
-    torch.load(osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_high_best.pth"))[
-        'decoder_state_dict']
-    low_decoder_weights = \
-    torch.load(osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_low_best.pth"))[
-        'decoder_state_dict']
-
-    t_model.backbone.load_state_dict(backbone_weights)
-    t_model.high_pressure_encoder.load_state_dict(high_encoder_weights)
-    t_model.low_pressure_encoder.load_state_dict(low_encoder_weights)
-    t_model.high_pressure_decoder.load_state_dict(high_decoder_weights)
-    t_model.low_pressure_decoder.load_state_dict(low_decoder_weights)
+t_model.backbone.load_state_dict(backbone_weights)
+t_model.high_pressure_encoder.load_state_dict(high_encoder_weights)
+t_model.low_pressure_encoder.load_state_dict(low_encoder_weights)
+t_model.high_pressure_decoder.load_state_dict(high_decoder_weights)
+t_model.low_pressure_decoder.load_state_dict(low_decoder_weights)
 
 # ----------------  start distillation ! -------------------
 print("-------------start distillation ! -------------")
 
-# config the crd structure
-random_data = torch.randn(2, 3, 32, 32).cuda()
-feat_t, _ = t_model.backbone(random_data, is_feat=True)
-feat_s, _ = s_model.backbone(random_data, is_feat=True)
-args.t_dim = feat_t[-1].shape[1]
-args.s_dim = feat_s[-1].shape[1]
-args.n_data = n_data
-criteon_kd = CRDLoss(args).cuda()
+criteon_kd = RKDLoss().cuda()
 
 s_optimizer = optim.SGD(
-    chain(s_model.parameters(), criteon_kd.embed_t.parameters(), criteon_kd.embed_s.parameters()),
+    chain(s_model.parameters()),
     lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 s_scheduler = MultiStepLR(s_optimizer, args.milestones, args.gamma)
 
@@ -382,8 +348,6 @@ best_acc = -1
 for epoch in range(args.epoch):
     s_model.train()
     t_model.eval()
-    criteon_kd.embed_t.train()
-    criteon_kd.embed_s.train()
 
     s_high_pressure_loss_record = AverageMeter()
     s_low__pressure_loss_record = AverageMeter()
@@ -391,11 +355,10 @@ for epoch in range(args.epoch):
     s_acc_record = AverageMeter()
 
     start = time.time()
-    for img, target, index, contrast_idx in train_loader:
+    for img, target, index in train_loader:
         img = img.float().cuda()
         target = target.cuda()
         index = index.cuda()
-        contrast_idx = contrast_idx.cuda()
 
         s_optimizer.zero_grad()
         with torch.no_grad():
@@ -405,12 +368,11 @@ for epoch in range(args.epoch):
         s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, feat_s = s_model.forward(
             img, bb_grad=True, output_decoder=False, output_encoder=True)
 
-        # crd loss
+        # rkd loss
         f_s = feat_s.view(img.size(0), -1)
         f_t = feat_t.view(img.size(0), -1)
 
-        logits_loss = F.cross_entropy(s_out, target) + 0.8 * criteon_kd(f_s, f_t, index,
-                                                                        contrast_idx)
+        logits_loss = F.cross_entropy(s_out, target) + criteon_kd(f_s, f_t)
 
         high_encoder_loss = F.kl_div(
             F.log_softmax(s_high_pressure_encoder_out / 2.0, dim=1),
