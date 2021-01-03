@@ -3,6 +3,7 @@ import logging
 import numpy as np
 
 import torch
+import torch.nn.functional as F
 from torch.nn import init
 
 class AverageMeter(object):
@@ -41,3 +42,43 @@ def norm(x):
 
     n = np.linalg.norm(x)
     return x / n
+
+
+def student_eval(t_model, s_model, val_loader):
+    s_model.eval()
+    s_high_pressure_loss_record = AverageMeter()
+    s_low__pressure_loss_record = AverageMeter()
+    s_logits_loss_record = AverageMeter()
+    s_acc_record = AverageMeter()
+
+    for img, target in val_loader:
+        img = img.cuda()
+        target = target.cuda()
+
+        with torch.no_grad():
+            t_out, t_high_pressure_encoder_out, t_low_pressure_encoder_out, _ = t_model.forward(
+                img, bb_grad=False, output_decoder=False, output_encoder=True)
+
+        s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, _ = s_model.forward(
+            img, bb_grad=True, output_decoder=False, output_encoder=True)
+
+        logits_loss = F.cross_entropy(s_out, target)
+
+        high_loss = F.kl_div(
+            F.log_softmax(s_high_pressure_encoder_out / 2.0, dim=1),
+            F.softmax(t_high_pressure_encoder_out / 2.0, dim=1),
+            reduction='batchmean'
+        ) * 2.0 * 2.0
+
+        low_loss = F.kl_div(
+            F.log_softmax(s_low_pressure_encoder_out / 8.0, dim=1),
+            F.softmax(t_low_pressure_encoder_out / 8.0, dim=1),
+            reduction='batchmean'
+        ) * 8.0 * 8.0
+
+        s_high_pressure_loss_record.update(high_loss.item(), img.size(0))
+        s_low__pressure_loss_record.update(low_loss.item(), img.size(0))
+        s_logits_loss_record.update(logits_loss.item(), img.size(0))
+        acc = accuracy(s_out.data, target)[0]
+        s_acc_record.update(acc.item(), img.size(0))
+    return s_high_pressure_loss_record, s_logits_loss_record, s_low__pressure_loss_record, s_acc_record
