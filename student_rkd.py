@@ -37,27 +37,26 @@ def str2bool(v):
 
 
 parser = argparse.ArgumentParser(description='train RKD student network.')
+parser.add_argument('--root', type=str, default='/data/wyx/datasets/cifar100')
+
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
-parser.add_argument('--alpha', type=float, default=0.2)
+
 parser.add_argument('--kd_weight', type=float, default=1.0)
 parser.add_argument('--ce_weight', type=float, default=1.0)
 
 parser.add_argument('--epoch', type=int, default=240)
-parser.add_argument('--t-epoch', type=int, default=60)
 parser.add_argument('--batch-size', type=int, default=64)
 
 parser.add_argument('--lr', type=float, default=0.05)
-parser.add_argument('--t-lr', type=float, default=0.01)
 parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight-decay', type=float, default=5e-4)
 parser.add_argument('--gamma', type=float, default=0.1)
 parser.add_argument('--milestones', type=int, nargs='+', default=[150, 180, 210])
-parser.add_argument('--t-milestones', type=int, nargs='+', default=[30, 45])
 
 parser.add_argument('--s-arch', type=str)  # student architecture
 parser.add_argument('--t-arch', type=str)  # teacher architecture
 parser.add_argument('--t-path', type=str)  # teacher checkpoint path
-parser.add_argument('--t_wrapper_train', type=str2bool, default=True)  # teacher checkpoint path
+
 parser.add_argument('--T', type=float, default=2.0)  # temperature
 
 parser.add_argument('--seed', type=int, default=1)
@@ -82,7 +81,7 @@ print(f"RKD Teacher:{args.t_arch} => Student:{args.s_arch} [{exp_path}]")
 
 logger = SummaryWriter(osp.join(exp_path, 'events'), flush_secs=10)
 
-train_loader, val_loader, n_data = get_cifar100_dataloaders(root='./data', batch_size=args.batch_size, num_workers=4, is_instance=True)
+train_loader, val_loader, n_data = get_cifar100_dataloaders(root=args.root, batch_size=args.batch_size, num_workers=4, is_instance=True)
 
 # student model definition
 s_model = model_dict[args.s_arch](num_classes=100)
@@ -90,8 +89,8 @@ s_model = wrapper(module=s_model, cfg=args).cuda()
 
 # teacher model loads checkpoint
 ckpt_path = osp.join(args.t_path, 'ckpt/best.pth')
-high_pressure_state_dict = osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_high_best.pth")
-low_pressure_state_dict = osp.join("experiments", "wrapper_teacher", args.t_arch, "teacher_low_best.pth")
+high_pressure_state_dict = osp.join("experiments", "cifar100", "wrapper_teacher", args.t_arch, "teacher_high_best.pth")
+low_pressure_state_dict = osp.join("experiments", "cifar100", "wrapper_teacher", args.t_arch, "teacher_low_best.pth")
 
 t_model = model_dict[t_arch](num_classes=100).cuda()
 t_model = wrapper(module=t_model, cfg=args).cuda()

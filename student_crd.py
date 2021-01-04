@@ -38,10 +38,11 @@ def str2bool(v):
 
 
 parser = argparse.ArgumentParser(description='train CRD student network.')
+parser.add_argument('--root', type=str, default='/data/wyx/datasets/cifar100')
+
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
 parser.add_argument('--kd_weight', type=float, default=0.8)
 parser.add_argument('--ce_weight', type=float, default=1.0)
-
 # NCE
 parser.add_argument('--nce_k', type=int, default=16384, help='number of negative samples for NCE')
 parser.add_argument('--nce_t', type=float, default=0.07, help='temperature parameter for softmax')
@@ -50,11 +51,9 @@ parser.add_argument('--feat_dim', default=128, type=int, help='feature dimension
 parser.add_argument('--mode', default='exact', type=str, choices=['exact', 'relax'])
 
 parser.add_argument('--epoch', type=int, default=240)
-parser.add_argument('--t-epoch', type=int, default=60)
 parser.add_argument('--batch-size', type=int, default=64)
 
 parser.add_argument('--lr', type=float, default=0.05)
-parser.add_argument('--t-lr', type=float, default=0.01)
 parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight-decay', type=float, default=5e-4)
 parser.add_argument('--gamma', type=float, default=0.1)
@@ -64,7 +63,6 @@ parser.add_argument('--t-milestones', type=int, nargs='+', default=[30, 45])
 parser.add_argument('--s-arch', type=str)  # student architecture
 parser.add_argument('--t-arch', type=str)  # teacher architecture
 parser.add_argument('--t-path', type=str)  # teacher checkpoint path
-parser.add_argument('--t_wrapper_train', type=str2bool, default=True)  # teacher checkpoint path
 parser.add_argument('--T', type=float, default=2.0)  # temperature
 
 parser.add_argument('--seed', type=int, default=1)
@@ -87,7 +85,7 @@ os.makedirs(exp_path, exist_ok=True)
 
 logger = SummaryWriter(osp.join(exp_path, 'events'), flush_secs=10)
 
-train_loader, val_loader, n_data = get_cifar100_dataloaders_sample('./data',
+train_loader, val_loader, n_data = get_cifar100_dataloaders_sample(root=args.root,
                                                                    batch_size=args.batch_size,
                                                                    num_workers=4,
                                                                    k=args.nce_k,
