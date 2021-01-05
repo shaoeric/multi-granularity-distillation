@@ -10,7 +10,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, MultiStepLR
 from data.cifar100 import get_cifar100_dataloaders
-from distiller_zoo import RKDLoss
+
+from distiller_zoo import PKT
 from itertools import chain
 from tensorboardX import SummaryWriter
 
@@ -33,7 +34,7 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-parser = argparse.ArgumentParser(description='train RKD student network.')
+parser = argparse.ArgumentParser(description='train PKT student network.')
 parser.add_argument('--root', type=str, default='/data/wyx/datasets/cifar100')
 
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
@@ -70,11 +71,11 @@ if args.s_arch in ['MobileNetV2', 'ShuffleV1', 'ShuffleV2']:
     args.lr = 0.01
 
 t_arch = args.t_arch
-exp_name = f'rkd_mpd_T_{t_arch}_S_{args.s_arch}'
+exp_name = f'pkt_mpd_T_{t_arch}_S_{args.s_arch}'
 exp_path = './experiments/{}/{}'.format(exp_name, datetime.now().strftime('%Y-%m-%d-%H-%M'))
 os.makedirs(exp_path, exist_ok=True)
 
-print(f"RKD Teacher:{args.t_arch} => Student:{args.s_arch} [{exp_path}]")
+print(f"PKT Teacher:{args.t_arch} => Student:{args.s_arch} [{exp_path}]")
 
 logger = SummaryWriter(osp.join(exp_path, 'events'), flush_secs=10)
 
@@ -108,7 +109,7 @@ t_model.eval()
 # ----------------  start distillation ! -------------------
 print("-------------start distillation ! -------------")
 
-criteon_kd = RKDLoss().cuda()
+criteon_kd = PKT().cuda()
 
 s_optimizer = optim.SGD(
     chain(s_model.parameters()),
@@ -139,7 +140,7 @@ for epoch in range(args.epoch):
         s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, feat_s = s_model.forward(
             img, bb_grad=True, output_decoder=False, output_encoder=True)
 
-        # rkd loss
+        # pkt loss
         f_s = feat_s.view(img.size(0), -1)
         f_t = feat_t.view(img.size(0), -1)
 
