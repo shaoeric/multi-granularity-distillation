@@ -44,7 +44,7 @@ def norm(x):
     return x / n
 
 
-def student_eval(t_model, s_model, val_loader):
+def student_eval(t_model, s_model, val_loader, args):
     s_model.eval()
     s_high_pressure_loss_record = AverageMeter()
     s_low__pressure_loss_record = AverageMeter()
@@ -65,16 +65,16 @@ def student_eval(t_model, s_model, val_loader):
         logits_loss = F.cross_entropy(s_out, target)
 
         high_loss = F.kl_div(
-            F.log_softmax(s_high_pressure_encoder_out / 2.0, dim=1),
-            F.softmax(t_high_pressure_encoder_out / 2.0, dim=1),
+            F.log_softmax(s_high_pressure_encoder_out / args.low_T, dim=1),
+            F.softmax(t_high_pressure_encoder_out / args.low_T, dim=1),
             reduction='batchmean'
-        ) * 2.0 * 2.0
+        ) * args.low_T * args.low_T
 
         low_loss = F.kl_div(
-            F.log_softmax(s_low_pressure_encoder_out / 8.0, dim=1),
-            F.softmax(t_low_pressure_encoder_out / 8.0, dim=1),
+            F.log_softmax(s_low_pressure_encoder_out / args.high_T, dim=1),
+            F.softmax(t_low_pressure_encoder_out / args.high_T, dim=1),
             reduction='batchmean'
-        ) * 8.0 * 8.0
+        ) * args.high_T * args.high_T
 
         s_high_pressure_loss_record.update(high_loss.item(), img.size(0))
         s_low__pressure_loss_record.update(low_loss.item(), img.size(0))

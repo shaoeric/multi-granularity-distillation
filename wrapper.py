@@ -46,8 +46,8 @@ class wrapper(nn.Module):
             nn.Linear(feat_dim, num_classes)
         )
 
-    def forward(self, x, bb_grad=True, output_decoder=False, output_encoder=False):
-        feats, out = self.backbone(x, is_feat=True)
+    def forward(self, x, bb_grad=True, output_decoder=False, output_encoder=False, is_feat=True, preact=False):
+        feats, out = self.backbone(x, is_feat=is_feat, preact=preact)
         feat = feats[-1].view(feats[-1].size(0), -1)
 
         high_pressure_encoder_out = self.high_pressure_encoder(feat)  # [b, 64]

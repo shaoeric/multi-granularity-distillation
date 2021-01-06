@@ -143,7 +143,7 @@ for epoch in range(args.epoch):
         f_s = feat_s.view(img.size(0), -1)
         f_t = feat_t.view(img.size(0), -1)
 
-        logits_loss = args.ce_weight * F.cross_entropy(s_out, target) + args.kd_weight * criteon_kd(f_s, f_t)
+        logits_loss = args.ce_weight * F.cross_entropy(s_out, target) + args.kd_weight *  criteon_kd(s_out, t_out)
 
         high_encoder_loss = F.kl_div(
             F.log_softmax(s_high_pressure_encoder_out / 2.0, dim=1),
@@ -184,7 +184,7 @@ for epoch in range(args.epoch):
     start = time.time()
 
     s_high_pressure_loss_record, s_logits_loss_record, s_low__pressure_loss_record, s_acc_record = student_eval(
-        t_model, s_model, val_loader)
+        t_model, s_model, val_loader, args)
     logger.add_scalar('s_val/s_high_loss', s_high_pressure_loss_record.avg, epoch + 1)
     logger.add_scalar('s_val/s_low_loss', s_low__pressure_loss_record.avg, epoch + 1)
     logger.add_scalar('s_val/s_logits_loss', s_logits_loss_record.avg, epoch + 1)

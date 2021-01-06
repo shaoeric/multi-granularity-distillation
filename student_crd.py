@@ -25,7 +25,7 @@ from models import model_dict
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
-# python student.py --s-arch resnet20 --t-path ./experiments/teacher_resnet56_seed0/
+# python student_kd.py --s-arch resnet20 --t-path ./experiments/teacher_resnet56_seed0/
 def str2bool(v):
     if isinstance(v, bool):
         return v
