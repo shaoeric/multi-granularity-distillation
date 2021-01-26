@@ -12,11 +12,12 @@ from .RKD import RKDLoss
 from .SP import Similarity
 from .VID import VIDLoss
 from .AFD import AFDloss
-from .crd.criterion import CRDLoss
+from .CRD import CRDLoss
 import torch
 import torch.nn as nn
 from models.util import ConvReg, LinearEmbed, Connector, Translator, Paraphraser
 from pretrain import init
+
 
 distillation_func = {
     'abound': ABLoss,
