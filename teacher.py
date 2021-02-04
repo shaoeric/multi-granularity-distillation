@@ -147,4 +147,4 @@ for epoch in range(args.epoch):
         torch.save(state_dict, name)
         best_acc = acc_record.avg
 
-print('best_acc: {:.2f}'.format(best_acc))
+print('student_best_acc: {:.2f}'.format(best_acc))

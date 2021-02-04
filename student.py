@@ -173,10 +173,10 @@ for epoch in range(args.epoch):
         if args.kd_func in ['abound']:
             preact = True
         with torch.no_grad():
-            t_out, t_high_pressure_encoder_out, t_low_pressure_encoder_out, feat_t = t_model.forward(
+            t_out, t_high_pressure_encoder_out, t_low_pressure_encoder_out, (feat_t, feat_ts) = t_model.forward(
                 img, bb_grad=False, output_decoder=False, output_encoder=True, is_feat=True, preact=preact)
 
-        s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, feat_s = s_model.forward(
+        s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, (feat_s, feat_ss) = s_model.forward(
             img, bb_grad=True, output_decoder=False, output_encoder=True)
 
         # cls loss
@@ -187,57 +187,57 @@ for epoch in range(args.epoch):
             loss_kd = 0
 
         elif args.kd_func == 'hint':
-            f_s = module_list[0](feat_s[args.hint_layer])
-            f_t = feat_t[args.hint_layer]
+            f_s = module_list[0](feat_ss[args.hint_layer])
+            f_t = feat_ts[args.hint_layer]
             loss_kd = criterion_kd(f_s, f_t)
 
         elif args.kd_func == 'crd':
-            f_s = feat_s[-1]
-            f_t = feat_t[-1]
+            f_s = feat_ss[-1]
+            f_t = feat_ts[-1]
             loss_kd = criterion_kd(f_s, f_t, index, contrast_idx)
 
         elif args.kd_func == 'attention':
-            g_s = feat_s[1:-1]
-            g_t = feat_t[1:-1]
+            g_s = feat_ss[1:-1]
+            g_t = feat_ts[1:-1]
             loss_group = criterion_kd(g_s, g_t)
             loss_kd = sum(loss_group)
 
         elif args.kd_func == 'nst':
-            g_s = feat_s[1:-1]
-            g_t = feat_t[1:-1]
+            g_s = feat_ss[1:-1]
+            g_t = feat_ts[1:-1]
             loss_group = criterion_kd(g_s, g_t)
             loss_kd = sum(loss_group)
 
         elif args.kd_func == 'similarity':
-            g_s = [feat_s[-2]]
-            g_t = [feat_t[-2]]
+            g_s = [feat_ss[-2]]
+            g_t = [feat_ts[-2]]
             loss_group = criterion_kd(g_s, g_t)
             loss_kd = sum(loss_group)
 
         elif args.kd_func == 'rkd':
-            f_s = feat_s[-1]
-            f_t = feat_t[-1]
+            f_s = feat_ss[-1]
+            f_t = feat_ts[-1]
             loss_kd = criterion_kd(f_s, f_t)
 
         elif args.kd_func == 'pkt':
-            f_s = feat_s[-1]
-            f_t = feat_t[-1]
+            f_s = feat_ss[-1]
+            f_t = feat_ts[-1]
             loss_kd = criterion_kd(f_s, f_t)
 
         elif args.kd_func == 'kdsvd':
-            g_s = feat_s[1:-1]
-            g_t = feat_t[1:-1]
+            g_s = feat_ss[1:-1]
+            g_t = feat_ts[1:-1]
             loss_group = criterion_kd(g_s, g_t)
             loss_kd = sum(loss_group)
 
         elif args.kd_func == 'correlation':
-            f_s = module_list[0](feat_s[-1])
-            f_t = module_list[1](feat_t[-1])
+            f_s = module_list[0](feat_ss[-1])
+            f_t = module_list[1](feat_ts[-1])
             loss_kd = criterion_kd(f_s, f_t)
 
         elif args.kd_func == 'vid' or 'afd':
-            g_s = feat_s[1:-1]
-            g_t = feat_t[1:-1]
+            g_s = feat_ss[1:-1]
+            g_t = feat_ts[1:-1]
             loss_group = [c(f_s, f_t) for f_s, f_t, c in zip(g_s, g_t, criterion_kd)]
             loss_kd = sum(loss_group)
 
@@ -249,8 +249,8 @@ for epoch in range(args.epoch):
             # can also add loss to this stage
             loss_kd = 0
         elif args.kd_func == 'factor':
-            factor_s = module_list[0](feat_s[-2])
-            factor_t = module_list[1](feat_t[-2], is_factor=True)
+            factor_s = module_list[0](feat_ss[-2])
+            factor_t = module_list[1](feat_ts[-2], is_factor=True)
             loss_kd = criterion_kd(factor_s, factor_t)
 
         else:
@@ -322,5 +322,5 @@ for epoch in range(args.epoch):
 
     s_scheduler.step()
 
-print('best_acc: {:.2f}'.format(best_acc))
+print('student_best_acc: {:.2f}'.format(best_acc))
 print()

@@ -149,6 +149,9 @@ class DistillationStructure:
         criterion_list.append(criterion_div)    # KL divergence loss, original knowledge distillation
         criterion_list.append(criterion_kd)     # other knowledge distillation loss
 
+        if torch.cuda.is_available():
+            module_list.cuda()
+            criterion_list.cuda()
         return criterion_list, module_list, trainable_list
 
 

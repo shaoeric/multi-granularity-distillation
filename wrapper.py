@@ -60,8 +60,8 @@ class wrapper(nn.Module):
             high_pressure_decoder_out = self.high_pressure_decoder(high_pressure_encoder_out)
             low_pressure_decoder_out = self.low_pressure_decoder(low_pressure_encoder_out)
             if not output_encoder:
-                return out, high_pressure_decoder_out, low_pressure_decoder_out, feat
+                return out, high_pressure_decoder_out, low_pressure_decoder_out, (feat, feats)
             else:
-                return out, high_pressure_encoder_out, high_pressure_decoder_out, low_pressure_encoder_out,  low_pressure_decoder_out, feat
+                return out, high_pressure_encoder_out, high_pressure_decoder_out, low_pressure_encoder_out,  low_pressure_decoder_out, (feat, feats)
 
-        return out, high_pressure_encoder_out, low_pressure_encoder_out, feat
+        return out, high_pressure_encoder_out, low_pressure_encoder_out, (feat, feats)
