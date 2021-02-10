@@ -10,13 +10,7 @@ class wrapper(nn.Module):
 
         self.backbone = module
         feat_dim = list(module.children())[-1].in_features
-        try:
-            num_classes = self.backbone.fc.out_features
-        except:
-            try:
-                num_classes = self.backbone.classifier.out_features
-            except:
-                num_classes = self.backbone.linear.out_features
+        num_classes = cfg.num_class
 
         high_pressure_nodes = cfg.encoder[0]  # 64
         low_pressure_nodes = cfg.encoder[1]   # 256

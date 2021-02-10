@@ -21,6 +21,8 @@ torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser(description='train teacher wrapper')
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
+parser.add_argument('--num_class', type=int, default=100)
+
 parser.add_argument('--alpha', type=float, default=0.2)
 parser.add_argument('--t-arch', type=str)  # teacher architecture
 parser.add_argument('--t-path', type=str)  # teacher checkpoint path

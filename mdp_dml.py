@@ -15,6 +15,7 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--num_class', type=int, default=100)
 parser.add_argument('--T', type=float, default=4.0)  # temperature
 parser.add_argument('--model_names', type=str, nargs='+', default=['resnet20', 'resnet20'])
 parser.add_argument('--alpha', type=float, default=0.5)  # weight for ce and kl

@@ -34,6 +34,8 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser(description='train student network.')
 parser.add_argument('--root', type=str, default='/data/wyx/datasets/cifar100')
+parser.add_argument('--num_class', type=int, default=100)
+
 parser.add_argument('--kd_func', type=str, required=True, choices=['kd', 'hint', 'attention', 'similarity', 'correlation', 'vid', 'crd', 'kdsvd', 'fsp', 'rkd', 'pkt', 'abound', 'factor', 'nst'])
 
 parser.add_argument('--encoder', type=int, nargs='+', default=[64, 256])
@@ -82,7 +84,7 @@ if args.s_arch in ['MobileNetV2', 'ShuffleV1', 'ShuffleV2']:
     args.lr = 0.01
 
 t_arch = args.t_arch
-exp_name = f'{args.kd_func}_mpd_T_{t_arch}_S_{args.s_arch}'
+exp_name = f'{args.kd_func}_mpd_stable_T_{t_arch}_S_{args.s_arch}'
 exp_path = './experiments/{}/{}'.format(exp_name, datetime.now().strftime('%Y-%m-%d-%H-%M'))
 os.makedirs(exp_path, exist_ok=True)
 
