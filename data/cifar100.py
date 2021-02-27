@@ -87,9 +87,9 @@ def get_cifar100_dataloaders(root='data', batch_size=128, num_workers=8, is_inst
                                  train=False,
                                  transform=test_transform)
     test_loader = DataLoader(test_set,
-                             batch_size=int(batch_size/2),
+                             batch_size=batch_size,
                              shuffle=False,
-                             num_workers=int(num_workers/2))
+                             num_workers=num_workers)
 
     if is_instance:
         return train_loader, test_loader, n_data
