@@ -106,23 +106,23 @@ s_model = wrapper(module=s_model, cfg=args).cuda()
 
 # teacher model loads checkpoint
 ckpt_path = osp.join(args.t_path, 'ckpt/best.pth')
-high_pressure_state_dict = osp.join("experiments", "cifar100", "wrapper_teacher", args.t_arch, "teacher_high_best.pth")
-low_pressure_state_dict = osp.join("experiments", "cifar100", "wrapper_teacher", args.t_arch, "teacher_low_best.pth")
+ak_state_dict = osp.join("experiments", "cifar100", "wrapper_teacher", args.t_arch, "teacher_high_best.pth")
+dk_state_dict = osp.join("experiments", "cifar100", "wrapper_teacher", args.t_arch, "teacher_low_best.pth")
 
 t_model = model_dict[t_arch](num_classes=100).cuda()
 t_model = wrapper(module=t_model, cfg=args).cuda()
 
 backbone_weights = torch.load(ckpt_path)['model']
-high_encoder_weights = torch.load(high_pressure_state_dict)['encoder_state_dict']
-low_encoder_weights = torch.load(low_pressure_state_dict)['encoder_state_dict']
-high_decoder_weights = torch.load(high_pressure_state_dict)['decoder_state_dict']
-low_decoder_weights = torch.load(low_pressure_state_dict)['decoder_state_dict']
+ak_encoder_weights = torch.load(ak_state_dict)['encoder_state_dict']
+dk_encoder_weights = torch.load(dk_state_dict)['encoder_state_dict']
+ak_decoder_weights = torch.load(ak_state_dict)['decoder_state_dict']
+dk_decoder_weights = torch.load(dk_state_dict)['decoder_state_dict']
 
 t_model.backbone.load_state_dict(backbone_weights)
-t_model.high_pressure_encoder.load_state_dict(high_encoder_weights)
-t_model.low_pressure_encoder.load_state_dict(low_encoder_weights)
-t_model.high_pressure_decoder.load_state_dict(high_decoder_weights)
-t_model.low_pressure_decoder.load_state_dict(low_decoder_weights)
+t_model.ak_encoder.load_state_dict(ak_encoder_weights)
+t_model.dk_encoder.load_state_dict(dk_encoder_weights)
+t_model.ak_decoder.load_state_dict(ak_decoder_weights)
+t_model.dk_decoder.load_state_dict(dk_decoder_weights)
 t_model.eval()
 
 # ----------------  start distillation ! -------------------
@@ -152,8 +152,8 @@ for epoch in range(args.epoch):
         module_list[2].eval()
 
 
-    s_high_pressure_loss_record = AverageMeter()
-    s_low__pressure_loss_record = AverageMeter()
+    s_ak_loss_record = AverageMeter()
+    s_dk_loss_record = AverageMeter()
     s_logits_loss_record = AverageMeter()
     s_acc_record = AverageMeter()
 
@@ -175,18 +175,18 @@ for epoch in range(args.epoch):
         if args.kd_func in ['abound']:
             preact = True
         with torch.no_grad():
-            t_out, t_high_pressure_encoder_out, t_high_pressure_decoder_out, t_low_pressure_encoder_out,  \
-            t_low_pressure_decoder_out,  (feat_t, feat_ts) = t_model.forward(
+            t_out, t_ak_encoder_out, t_ak_decoder_out, t_dk_encoder_out,  \
+            t_dk_decoder_out,  (feat_t, feat_ts) = t_model.forward(
                 img, bb_grad=False, output_decoder=True, output_encoder=True, is_feat=True, preact=preact)
 
-        s_out, s_high_pressure_encoder_out, s_high_pressure_decoder_out, s_low_pressure_encoder_out,  \
-        s_low_pressure_decoder_out,  (feat_s, feat_ss) = s_model.forward(
+        s_out, s_ak_encoder_out, s_ak_decoder_out, s_dk_encoder_out,  \
+        s_dk_decoder_out,  (feat_s, feat_ss) = s_model.forward(
             img, bb_grad=True, output_decoder=True, output_encoder=True)
 
         # cls loss
         loss_cls = F.cross_entropy(s_out, target)
 
-        stable_out = (t_out + t_high_pressure_decoder_out + t_low_pressure_decoder_out) / 3.0
+        stable_out = (t_out + t_ak_decoder_out + t_dk_decoder_out) / 3.0
         loss_div = criterion_div(s_out, stable_out.detach())
 
         if args.kd_func == 'kd':
@@ -265,37 +265,37 @@ for epoch in range(args.epoch):
 
         distill_loss = args.ce_weight * loss_cls + args.kd_weight * loss_kd + args.div_weight * loss_div
 
-        high_encoder_loss = F.kl_div(
-            F.log_softmax(s_high_pressure_encoder_out / args.low_T, dim=1),
-            F.softmax(t_high_pressure_encoder_out / args.low_T, dim=1),
+        ak_encoder_loss = F.kl_div(
+            F.log_softmax(s_ak_encoder_out / args.low_T, dim=1),
+            F.softmax(t_ak_encoder_out / args.low_T, dim=1),
             reduction='batchmean'
         ) * args.low_T * args.low_T
 
-        low_encoder_loss = F.kl_div(
-            F.log_softmax(s_low_pressure_encoder_out / args.high_T, dim=1),
-            F.softmax(t_low_pressure_encoder_out / args.high_T, dim=1),
+        dk_encoder_loss = F.kl_div(
+            F.log_softmax(s_dk_encoder_out / args.high_T, dim=1),
+            F.softmax(t_dk_encoder_out / args.high_T, dim=1),
             reduction='batchmean'
         ) * args.high_T * args.high_T
 
-        loss = distill_loss + high_encoder_loss + low_encoder_loss
+        loss = distill_loss + ak_encoder_loss + dk_encoder_loss
         loss.backward()
         s_optimizer.step()
 
-        s_high_pressure_loss_record.update(high_encoder_loss.item(), img.size(0))
-        s_low__pressure_loss_record.update(low_encoder_loss.item(), img.size(0))
+        s_ak_loss_record.update(ak_encoder_loss.item(), img.size(0))
+        s_dk_loss_record.update(dk_encoder_loss.item(), img.size(0))
         s_logits_loss_record.update(distill_loss.item(), img.size(0))
         acc = accuracy(s_out.data, target)[0]
         s_acc_record.update(acc.item(), img.size(0))
 
-    logger.add_scalar('s_train/s_high_loss', s_high_pressure_loss_record.avg, epoch + 1)
-    logger.add_scalar('s_train/s_low_loss', s_low__pressure_loss_record.avg, epoch + 1)
+    logger.add_scalar('s_train/s_ak_loss', s_ak_loss_record.avg, epoch + 1)
+    logger.add_scalar('s_train/s_dk_loss', s_dk_loss_record.avg, epoch + 1)
     logger.add_scalar('s_train/s_logits_loss', s_logits_loss_record.avg, epoch + 1)
     logger.add_scalar('s_train/s_acc', s_acc_record.avg, epoch + 1)
 
     run_time = time.time() - start
     msg = 'student train Epoch:{:03d}/{:03d}\truntime:{:.3f}\t hp loss:{:.3f} lp loss:{:.3f} acc:{:.2f} '.format(
-        epoch + 1, args.epoch, run_time, s_high_pressure_loss_record.avg,
-        s_low__pressure_loss_record.avg, s_acc_record.avg
+        epoch + 1, args.epoch, run_time, s_ak_loss_record.avg,
+        s_dk_loss_record.avg, s_acc_record.avg
     )
     if (epoch + 1) % args.print_freq == 0:
         print(msg)
@@ -303,18 +303,18 @@ for epoch in range(args.epoch):
     # validation
     start = time.time()
 
-    s_high_pressure_loss_record, s_logits_loss_record, s_low__pressure_loss_record, s_acc_record = student_eval(
+    s_ak_loss_record, s_logits_loss_record, s_dk_loss_record, s_acc_record = student_eval(
         t_model, s_model, val_loader, args)
 
-    logger.add_scalar('s_val/s_high_loss', s_high_pressure_loss_record.avg, epoch + 1)
-    logger.add_scalar('s_val/s_low_loss', s_low__pressure_loss_record.avg, epoch + 1)
+    logger.add_scalar('s_val/s_ak_loss', s_ak_loss_record.avg, epoch + 1)
+    logger.add_scalar('s_val/s_dk_loss', s_dk_loss_record.avg, epoch + 1)
     logger.add_scalar('s_val/s_logits_loss', s_logits_loss_record.avg, epoch + 1)
     logger.add_scalar('s_val/s_acc', s_acc_record.avg, epoch + 1)
     run_time = time.time() - start
 
     msg = 'student val Epoch:{:03d}/{:03d}\truntime:{:.3f}\t hp loss:{:.3f} lp loss:{:.3f} acc:{:.2f} '.format(
-        epoch + 1, args.epoch, run_time, s_high_pressure_loss_record.avg,
-        s_low__pressure_loss_record.avg, s_acc_record.avg
+        epoch + 1, args.epoch, run_time, s_ak_loss_record.avg,
+        s_dk_loss_record.avg, s_acc_record.avg
     )
     if (epoch + 1) % args.print_freq == 0:
         print(msg)

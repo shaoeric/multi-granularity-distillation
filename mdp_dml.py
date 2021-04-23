@@ -62,8 +62,8 @@ def train_one_epoch(models, optimizers, train_loader):
     for i, (imgs, label) in enumerate(train_loader):
         # torch.Size([batch, 3, 32, 32]) torch.Size([64])
         out_list = []
-        high_out_list = []
-        low_out_list = []
+        ak_out_list = []
+        dk_out_list = []
 
         # forward
         for model_idx, model in enumerate(models):
@@ -71,27 +71,27 @@ def train_one_epoch(models, optimizers, train_loader):
                 imgs = imgs.cuda()
                 label = label.cuda()
 
-            out, high_out, low_out, _ = model.forward(imgs)
+            out, ak_out, dk_out, _ = model.forward(imgs)
             out_list.append(out)
-            high_out_list.append(high_out)
-            low_out_list.append(low_out)
+            ak_out_list.append(ak_out)
+            dk_out_list.append(dk_out)
 
 
         # backward
         for model_idx in range(len(models)):
             ce_loss = F.cross_entropy(out_list[model_idx], label)
             kl_loss = 0
-            high_kl_loss = 0
-            low_kl_loss = 0
+            ak_kl_loss = 0
+            dk_kl_loss = 0
             for j in range(len(models)):
                 if i != j:
                     kl_loss += F.kl_div(F.log_softmax(out_list[model_idx], dim=1), F.softmax(Variable(out_list[j]),
                                                                                              dim=1))
-                    high_kl_loss += F.kl_div(F.log_softmax(high_out_list[model_idx] / 2.0, dim=1), F.softmax(Variable(
-                        high_out_list[j] / 2.0), dim=1)) * 2.0 * 2.0
-                    low_kl_loss += F.kl_div(F.log_softmax(low_out_list[model_idx] / 8.0, dim=1), F.softmax(Variable(
-                        low_out_list[j] / 8.0), dim=1)) * 8.0 * 8.0
-            loss = ce_loss + (kl_loss + high_kl_loss + low_kl_loss)/ (len(models) - 1)
+                    ak_kl_loss += F.kl_div(F.log_softmax(ak_out_list[model_idx] / 2.0, dim=1), F.softmax(Variable(
+                        ak_out_list[j] / 2.0), dim=1)) * 2.0 * 2.0
+                    dk_kl_loss += F.kl_div(F.log_softmax(dk_out_list[model_idx] / 8.0, dim=1), F.softmax(Variable(
+                        dk_out_list[j] / 8.0), dim=1)) * 8.0 * 8.0
+            loss = ce_loss + (kl_loss + ak_kl_loss + dk_kl_loss)/ (len(models) - 1)
 
 
             optimizers[model_idx].zero_grad()

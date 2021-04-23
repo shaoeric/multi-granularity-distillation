@@ -12,30 +12,30 @@ class wrapper(nn.Module):
         feat_dim = list(module.children())[-1].in_features
         num_classes = cfg.num_class
 
-        high_pressure_nodes = cfg.encoder[0]  # 64
-        low_pressure_nodes = cfg.encoder[1]   # 256
+        dim_ak = cfg.encoder[0]  # 64
+        dim_dk = cfg.encoder[1]   # 256
 
         # high-pressure tube / low-dim encoder
-        self.high_pressure_encoder = nn.Sequential(
+        self.ak_encoder = nn.Sequential(
             nn.Linear(feat_dim, feat_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(feat_dim, high_pressure_nodes)
+            nn.Linear(feat_dim, dim_ak)
             )
         # high-pressure tube / low-dim decoder
-        self.high_pressure_decoder = nn.Sequential(
-            nn.Linear(high_pressure_nodes, feat_dim),
+        self.ak_decoder = nn.Sequential(
+            nn.Linear(dim_ak, feat_dim),
             nn.ReLU(inplace=True),
             nn.Linear(feat_dim, num_classes)
             )
         # low-pressure tube / high-dim encoder
-        self.low_pressure_encoder = nn.Sequential(
+        self.dk_encoder = nn.Sequential(
             nn.Linear(feat_dim, feat_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(feat_dim, low_pressure_nodes)
+            nn.Linear(feat_dim, dim_dk)
         )
         # low-pressure tube / high-dim encoder
-        self.low_pressure_decoder = nn.Sequential(
-            nn.Linear(low_pressure_nodes, feat_dim),
+        self.dk_decoder = nn.Sequential(
+            nn.Linear(dim_dk, feat_dim),
             nn.ReLU(inplace=True),
             nn.Linear(feat_dim, num_classes)
         )
@@ -44,18 +44,18 @@ class wrapper(nn.Module):
         feats, out = self.backbone(x, is_feat=is_feat, preact=preact)
         feat = feats[-1].view(feats[-1].size(0), -1)
 
-        high_pressure_encoder_out = self.high_pressure_encoder(feat)  # [b, 64]
-        low_pressure_encoder_out = self.low_pressure_encoder(feat)  # [b, 256]
+        ak_encoder_out = self.ak_encoder(feat)  # [b, 64]
+        dk_encoder_out = self.dk_encoder(feat)  # [b, 256]
 
         if not bb_grad:
             feat = feat.detach()
 
         if output_decoder:
-            high_pressure_decoder_out = self.high_pressure_decoder(high_pressure_encoder_out)
-            low_pressure_decoder_out = self.low_pressure_decoder(low_pressure_encoder_out)
+            ak_decoder_out = self.ak_decoder(ak_encoder_out)
+            dk_decoder_out = self.dk_decoder(dk_encoder_out)
             if not output_encoder:
-                return out, high_pressure_decoder_out, low_pressure_decoder_out, (feat, feats)
+                return out, ak_decoder_out, dk_decoder_out, (feat, feats)
             else:
-                return out, high_pressure_encoder_out, high_pressure_decoder_out, low_pressure_encoder_out,  low_pressure_decoder_out, (feat, feats)
+                return out, ak_encoder_out, ak_decoder_out, dk_encoder_out,  dk_decoder_out, (feat, feats)
 
-        return out, high_pressure_encoder_out, low_pressure_encoder_out, (feat, feats)
+        return out, ak_encoder_out, dk_encoder_out, (feat, feats)

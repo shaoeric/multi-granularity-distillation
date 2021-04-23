@@ -46,8 +46,8 @@ def norm(x):
 
 def student_eval(t_model, s_model, val_loader, args):
     s_model.eval()
-    s_high_pressure_loss_record = AverageMeter()
-    s_low__pressure_loss_record = AverageMeter()
+    s_ak_loss_record = AverageMeter()
+    s_dk_loss_record = AverageMeter()
     s_logits_loss_record = AverageMeter()
     s_acc_record = AverageMeter()
 
@@ -56,29 +56,29 @@ def student_eval(t_model, s_model, val_loader, args):
         target = target.cuda()
 
         with torch.no_grad():
-            t_out, t_high_pressure_encoder_out, t_low_pressure_encoder_out, _ = t_model.forward(
+            t_out, t_ak_encoder_out, t_dk_encoder_out, _ = t_model.forward(
                 img, bb_grad=False, output_decoder=False, output_encoder=True)
 
-        s_out, s_high_pressure_encoder_out, s_low_pressure_encoder_out, _ = s_model.forward(
+        s_out, s_dk_encoder_out, s_dk_encoder_out, _ = s_model.forward(
             img, bb_grad=True, output_decoder=False, output_encoder=True)
 
         logits_loss = F.cross_entropy(s_out, target)
 
-        high_loss = F.kl_div(
-            F.log_softmax(s_high_pressure_encoder_out / args.low_T, dim=1),
-            F.softmax(t_high_pressure_encoder_out / args.low_T, dim=1),
+        ak_loss = F.kl_div(
+            F.log_softmax(s_dk_encoder_out / args.low_T, dim=1),
+            F.softmax(t_ak_encoder_out / args.low_T, dim=1),
             reduction='batchmean'
         ) * args.low_T * args.low_T
 
-        low_loss = F.kl_div(
-            F.log_softmax(s_low_pressure_encoder_out / args.high_T, dim=1),
-            F.softmax(t_low_pressure_encoder_out / args.high_T, dim=1),
+        dk_loss = F.kl_div(
+            F.log_softmax(s_dk_encoder_out / args.high_T, dim=1),
+            F.softmax(t_dk_encoder_out / args.high_T, dim=1),
             reduction='batchmean'
         ) * args.high_T * args.high_T
 
-        s_high_pressure_loss_record.update(high_loss.item(), img.size(0))
-        s_low__pressure_loss_record.update(low_loss.item(), img.size(0))
+        s_ak_loss_record.update(ak_loss.item(), img.size(0))
+        s_dk_loss_record.update(dk_loss.item(), img.size(0))
         s_logits_loss_record.update(logits_loss.item(), img.size(0))
         acc = accuracy(s_out.data, target)[0]
         s_acc_record.update(acc.item(), img.size(0))
-    return s_high_pressure_loss_record, s_logits_loss_record, s_low__pressure_loss_record, s_acc_record
+    return s_ak_loss_record, s_logits_loss_record, s_dk_loss_record, s_acc_record
