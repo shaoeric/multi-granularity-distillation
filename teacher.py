@@ -69,6 +69,8 @@ val_loader = DataLoader(valset, batch_size=args.batch_size, shuffle=False, num_w
                         pin_memory=False)
 
 model = model_dict[args.arch](num_classes=100).cuda()
+
+
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
                       weight_decay=args.weight_decay)
 scheduler = MultiStepLR(optimizer, milestones=args.milestones, gamma=args.gamma)

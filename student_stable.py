@@ -13,7 +13,7 @@ from data.cifar100 import get_cifar100_dataloaders, get_cifar100_dataloaders_sam
 from itertools import chain
 from tensorboardX import SummaryWriter
 from distiller_zoo import DistillationStructure
-from utils import AverageMeter, accuracy, student_eval
+from utils import AverageMeter, accuracy, student_eval_with_teacher
 from wrapper import wrapper
 from models import model_dict
 
@@ -303,7 +303,7 @@ for epoch in range(args.epoch):
     # validation
     start = time.time()
 
-    s_ak_loss_record, s_logits_loss_record, s_dk_loss_record, s_acc_record = student_eval(
+    s_ak_loss_record, s_logits_loss_record, s_dk_loss_record, s_acc_record = student_eval_with_teacher(
         t_model, s_model, val_loader, args)
 
     logger.add_scalar('s_val/s_ak_loss', s_ak_loss_record.avg, epoch + 1)
@@ -321,7 +321,7 @@ for epoch in range(args.epoch):
 
     if s_acc_record.avg > best_acc:
         state_dict = dict(epoch=epoch + 1, state_dict=s_model.state_dict(), acc=s_acc_record.avg)
-        name = osp.join(exp_path, 'ckpt/student_best.pth')
+        name = osp.join(exp_path, 'ckpt/kd_mas_vgg13_vgg8.pth')
         os.makedirs(osp.dirname(name), exist_ok=True)
         torch.save(state_dict, name)
         best_acc = s_acc_record.avg

@@ -44,7 +44,7 @@ def norm(x):
     return x / n
 
 
-def student_eval(t_model, s_model, val_loader, args):
+def student_eval_with_teacher(t_model, s_model, val_loader, args):
     s_model.eval()
     s_ak_loss_record = AverageMeter()
     s_dk_loss_record = AverageMeter()
@@ -82,3 +82,27 @@ def student_eval(t_model, s_model, val_loader, args):
         acc = accuracy(s_out.data, target)[0]
         s_acc_record.update(acc.item(), img.size(0))
     return s_ak_loss_record, s_logits_loss_record, s_dk_loss_record, s_acc_record
+
+def student_eval_with_target(s_model, val_loader, args):
+    s_model.eval()
+    s_nk_acc_record = AverageMeter()
+    s_ak_acc_record = AverageMeter()
+    s_dk_acc_record = AverageMeter()
+
+    for img, target in val_loader:
+        img = img.cuda()
+        target = target.cuda()
+
+        s_out, s_ak_decoder_out, s_dk_decoder_out, _ = s_model.forward(
+            img, bb_grad=True, output_decoder=True, output_encoder=False)
+
+        nk_acc = accuracy(s_out.data, target)[0]
+        s_nk_acc_record.update(nk_acc.item(), img.size(0))
+
+        ak_acc = accuracy(s_ak_decoder_out.data, target)[0]
+        s_ak_acc_record.update(ak_acc.item(), img.size(0))
+
+        dk_acc = accuracy(s_dk_decoder_out.data, target)[0]
+        s_dk_acc_record.update(dk_acc.item(), img.size(0))
+
+    return s_nk_acc_record, s_ak_acc_record, s_dk_acc_record
