@@ -1,4 +1,5 @@
 ###  Multi-granularity for knowledge distillation ![]( https://visitor-badge.glitch.me/badge?page_id=multi_granularity_distillation)
+🎉🎉🎉**Our paper has been accepted by IMAVIS!!!** [paper](https://www.sciencedirect.com/science/article/abs/pii/S0262885621001918)
 
 #### Dependencies
 
