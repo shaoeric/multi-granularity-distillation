@@ -81,7 +81,17 @@ python student_stable.py --kd_func [kd-function] --s-arch [student] --t-arch [te
 |    9    | MAS_RKD(T:2) |  ResNet50   | 91.09 | 79.43 |
 |   10    | MAS_RKD(T:8) | OSNetx0.75  | 94.50 | 84.30 |
 
-
+#### BibTex Cite
+```
+@article{shao2021multi,
+  title={Multi-granularity for knowledge distillation},
+  author={Shao, Baitan and Chen, Ying},
+  journal={Image and Vision Computing},
+  pages={104286},
+  year={2021},
+  publisher={Elsevier}
+}
+```
 
 ####  Acknowledgements
 
